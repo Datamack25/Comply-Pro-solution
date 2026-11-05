@@ -1,0 +1,11 @@
+[project]
+name = "compliance-watch-platform"
+version = "2.0.0"
+description = "CWP – Compliance Watch Platform : veille sanctions, LCB-FT et réglementaire (Streamlit)"
+authors = [{ name = "Mackenson Cineus" }]
+requires-python = ">=3.10"
+readme = "README.md"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore:.*No runtime found.*"]

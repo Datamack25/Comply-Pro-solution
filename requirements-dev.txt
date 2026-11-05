@@ -1,0 +1,5 @@
+-r requirements.txt
+pytest>=8
+# pour régénérer data/reference/ref_pays.csv (scripts/build_ref_pays.py)
+pycountry
+country_converter

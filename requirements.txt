@@ -1,0 +1,14 @@
+streamlit>=1.50
+feedparser
+pandas
+openpyxl
+requests
+reportlab>=4.0
+pypdfium2>=4.0
+pillow
+googlenewsdecoder
+plotly>=5.20
+scikit-learn>=1.4
+rapidfuzz>=3.0
+folium>=0.16
+joblib
