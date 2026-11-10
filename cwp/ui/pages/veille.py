@@ -1,4 +1,4 @@
-"""📡 Veille — actualités sanctions & embargos (cartes) et veille réglementaire."""
+"""📡 Veille — actualités sanctions & embargos (cartes), veille réglementaire et générateur de documents de veille."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -13,7 +13,8 @@ from cwp.ui import components as C
 def render(ctx: dict) -> None:
     items, new_links, kws = ctx["items"], ctx["new_links"], ctx["keywords"]
     st.markdown("# 📡 Veille")
-    tab_sanctions, tab_reglementaire = st.tabs(["🚨 Sanctions & embargos", "📜 Veille réglementaire"])
+    tab_sanctions, tab_reglementaire, tab_gen = st.tabs(["🚨 Sanctions & embargos", "📜 Veille réglementaire",
+                                                         "🖨️ Générateur de veille (PDF / image)"])
     with tab_sanctions:
         col1, col2 = st.columns([2, 1])
         q = col1.text_input("Recherche", placeholder="ex : Russie, AMLA, OFAC…")
@@ -38,3 +39,6 @@ def render(ctx: dict) -> None:
     with tab_reglementaire:
         from cwp.ui.pages.veille_reglementaire import render_veille_reglementaire
         render_veille_reglementaire()
+    with tab_gen:
+        from cwp.ui.pages.generateur_veille import render_generateur
+        render_generateur(ctx, key="gv")

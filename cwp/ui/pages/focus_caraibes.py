@@ -308,12 +308,15 @@ def render_focus_caraibes(ctx: dict | None = None):
     st.markdown("# 🌎 Focus Caraïbes & Amérique latine")
     st.caption("Sanctions, embargos, corruption et risque LCB-FT dans la région, Haïti en tête.")
     df = load_countries()
-    t1, t2, t3, t4, t5 = st.tabs(["🎯 Weekly Watch régional", "📡 Veille par pays", "🗺️ Fiches pays",
-                                  "🕵️ Typologies", "✍️ Post LinkedIn"])
+    t1, t2, t6, t3, t4, t5 = st.tabs(["🎯 Weekly Watch régional", "📡 Veille par pays", "🖨️ Générer un document",
+                                      "🗺️ Fiches pays", "🕵️ Typologies", "✍️ Post LinkedIn"])
     with t1:
         _tab_weekly(df)
     with t2:
         _tab_veille(df)
+    with t6:
+        from cwp.ui.pages.generateur_veille import render_generateur
+        render_generateur(ctx, region_defaut="🏝️ Caraïbes", pays_defaut=["HT"], key="fcg")
     with t3:
         _tab_fiches(df)
     with t4:
