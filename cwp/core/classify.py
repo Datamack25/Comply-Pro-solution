@@ -63,7 +63,7 @@ MEASURES = [
                                                               "mis en examen", "poursuit", "indict", "arrest", "interpell",
                                                               "condamn", "convicted", "perquisition", "raid"]),
     ("regle", "Réglementation", "#00ff88", "#1d8a55", ["règlement", "directive", "guidelines", "lignes directrices",
-                                                       "consultation", "amlr", "mica", "dora", "entre en vigueur",
+                                                       "consultation", "amlr", "mica", "dora", "entre en vigueur", "circulaire", "circular",
                                                        "applicable", "rule", "framework", "standard"]),
 ]
 NEWS_MEASURE = ("news", "Actualité", "#52708a", "#6b7c8c")
