@@ -136,7 +136,7 @@ def _wrap(d, text, font, width, max_lines):
     return lines or [""]
 
 
-def make_png(rows, label, period_txt) -> bytes:
+def make_png(rows, label, period_txt, title: str = "Weekly Watch — Sécurité financière") -> bytes:
     from PIL import Image, ImageDraw
     W, M, pad, lh = 1800, 48, 12, 26
     FLAG_W = 40
@@ -160,7 +160,7 @@ def make_png(rows, label, period_txt) -> bytes:
     img = Image.new("RGB", (W, H), "white")
     d = ImageDraw.Draw(img)
     d.rounded_rectangle([M, M, W - M, M + 110], radius=18, fill="#fbf7ea", outline="#e8dcb0", width=2)
-    d.text((M + 30, M + 16), T("Weekly Watch — Sécurité financière"), font=f_title, fill=GOLD)
+    d.text((M + 30, M + 16), T(title), font=f_title, fill=GOLD)
     d.text((M + 32, M + 72), T(f"{label} · {period_txt}"), font=f_sub, fill="#6b6b6b")
     y = top
     for (name, _), (x0, _) in zip(EXPORT_COLS, xs):
@@ -201,7 +201,8 @@ def make_png(rows, label, period_txt) -> bytes:
 # --------------------------------------------------------------------------- #
 # PDF
 # --------------------------------------------------------------------------- #
-def make_pdf(rows, label, period_txt) -> bytes:
+def make_pdf(rows, label, period_txt, title: str = "Weekly Watch — Sécurité financière", intro=None) -> bytes:
+    """intro : liste facultative de lignes (synthèse, statut GAFI des pays…) affichées sous le titre."""
     from xml.sax.saxutils import escape
 
     from reportlab.lib import colors
@@ -216,7 +217,7 @@ def make_pdf(rows, label, period_txt) -> bytes:
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), leftMargin=12 * mm, rightMargin=12 * mm,
-                            topMargin=12 * mm, bottomMargin=16 * mm, title="Weekly Watch – Sécurité financière",
+                            topMargin=12 * mm, bottomMargin=16 * mm, title=title,
                             author=COPYRIGHT)
     gold = colors.HexColor(GOLD)
     s_t = ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=20, textColor=gold, leading=24)
@@ -255,8 +256,11 @@ def make_pdf(rows, label, period_txt) -> bytes:
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
-    story = [Paragraph(txt("Weekly Watch — Sécurité financière"), s_t),
-             Paragraph(txt(f"{label} · {period_txt} · {len(rows)} éléments"), s_s), Spacer(1, 5 * mm), table,
+    story = [Paragraph(txt(title), s_t),
+             Paragraph(txt(f"{label} · {period_txt} · {len(rows)} éléments"), s_s)]
+    for line in (intro or []):
+        story.append(Paragraph(txt(line), ParagraphStyle("i", parent=s_c, spaceBefore=3)))
+    story += [Spacer(1, 5 * mm), table,
              Spacer(1, 4 * mm), Paragraph(txt(f"{FOOTER} · généré le {datetime.now():%d/%m/%Y %H:%M}"), s_s)]
 
     def _footer(canvas, _doc):
