@@ -9,6 +9,22 @@
   Pour ajouter un texte : copier un bloc dans `REGISTRE` et adapter les dates.
 - **Publications récentes** : même moteur que la page Regulatory Flash (ci-dessous).
 
+## Page Veille → sous-onglet « 🖨️ Générateur de veille (PDF / image) »
+
+Aussi disponible dans 🌎 Focus Caraïbes → « 🖨️ Générer un document » (pré-réglé sur Caraïbes / Haïti).
+
+- **Région** : Monde entier, Caraïbes, Amérique latine, Amérique du Nord, Europe, Afrique, Moyen-Orient, Asie, Océanie
+  (référentiel `data/reference/ref_pays.csv`, colonnes `region` / `sous_region`).
+- **Pays** : un ou plusieurs, ou « Tous les pays de la région ».
+- **Type d'information** : sanctions & gels d'avoirs, embargos & contrôle des exportations, amendes des régulateurs,
+  listes GAFI & pays à risque, réglementation & circulaires, enquêtes / poursuites / corruption, ou toutes les actualités.
+- **Période** (7 jours → 12 mois) et option « uniquement les mesures prononcées ».
+- Tableau au format Weekly Watch (Entité / cible, Catégorie, Description + « Même information », Pays, Mesure, Montant,
+  Date, Autorité) ; exports PNG, PDF (avec synthèse de l'analyste et statut GAFI des pays choisis) et Excel.
+- Collecte : `cwp/services/veille_ciblee.py` (Google Actualités FR + EN par pays et par type, flux de la plateforme,
+  historique `data/actualites.csv`). Une information n'est retenue que si elle cite un pays du périmètre :
+  une sanction OFAC visant Haïti apparaît donc bien dans la veille Haïti.
+
 ## Regulatory Flash = veille réglementaire automatique
 
 `cwp/services/regwatch.py` interroge les régulateurs (ACPR, TRACFIN, AMF, DG Trésor, Journal officiel, AFA,

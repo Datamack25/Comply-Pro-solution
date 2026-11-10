@@ -1,5 +1,17 @@
 # Journal des modifications
 
+## 2.1.0 — 11/11/2026
+
+### Nouveauté : générateur de documents de veille (PDF / image / Excel)
+- Page **📡 Veille → 🖨️ Générateur de veille** et **🌎 Focus Caraïbes → 🖨️ Générer un document**.
+- Choix de la **région** (ou monde entier), d'un ou plusieurs **pays** ou de **tous les pays** de la région,
+  du **type d'information** (sanctions & gels, embargos, amendes, listes GAFI, réglementation & circulaires,
+  enquêtes & corruption, ou toutes les actualités) et de la **période**.
+- Tableau au format Weekly Watch et exports PNG, PDF (synthèse de l'analyste, statut GAFI des pays) et Excel.
+- Les mesures prononcées à l'étranger qui visent un pays du périmètre (ex. OFAC → Haïti) sont retenues.
+- `make_png` / `make_pdf` acceptent un titre personnalisé (et une introduction pour le PDF) ; le Weekly Watch
+  du Dashboard n'est pas modifié.
+
 ## 2.0.0 — 05/11/2026
 
 ### Corrections
