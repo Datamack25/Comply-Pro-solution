@@ -37,11 +37,26 @@ def render_generateur(ctx: dict | None = None, region_defaut: str | None = None,
     st.caption("Composez votre document de veille : région, pays (ou tous les pays), type d'information et période, "
                "puis téléchargez-le en image (PNG), PDF ou Excel — au format du tableau Weekly Watch.")
 
+    # 0. Raccourcis : règlent région, types d'information et titre en un clic
+    def _appliquer(nom):
+        reg, cats_, titre = V.RACCOURCIS[nom]
+        st.session_state[f"{key}_region"] = reg
+        st.session_state[f"{key}_cats"] = cats_
+        st.session_state[f"{key}_titre"] = titre
+        st.session_state.pop(f"{key}_pays_{reg}", None)       # « tous les pays » de la région
+
+    st.markdown('<div class="meta">RACCOURCIS</div>', unsafe_allow_html=True)
+    rc = st.columns(len(V.RACCOURCIS))
+    for col, nom in zip(rc, V.RACCOURCIS):
+        col.button(nom, key=f"{key}_rc_{_slug(nom)}", on_click=_appliquer, args=(nom,), width="stretch")
+
     # 1. Périmètre géographique
     regions = [V.MONDE] + list(V.REGIONS)
+    # valeurs initiales posées une seule fois dans la session (les raccourcis peuvent ensuite les modifier)
+    st.session_state.setdefault(f"{key}_region", region_defaut if region_defaut in regions else regions[0])
+    st.session_state.setdefault(f"{key}_cats", ["🎯 Sanctions & gels d'avoirs", "🚫 Embargos & contrôle des exportations"])
     c1, c2 = st.columns([1, 2])
-    region = c1.selectbox("Région", regions, index=regions.index(region_defaut) if region_defaut in regions else 0,
-                          key=f"{key}_region")
+    region = c1.selectbox("Région", regions, key=f"{key}_region")
     liste = V.pays_region(region)
     noms = dict(liste)
     if region == V.MONDE:
@@ -61,7 +76,6 @@ def render_generateur(ctx: dict | None = None, region_defaut: str | None = None,
 
     # 2. Type d'information
     cats = st.multiselect("Type d'information", V.CHOIX,
-                          default=["🎯 Sanctions & gels d'avoirs", "🚫 Embargos & contrôle des exportations"],
                           key=f"{key}_cats",
                           help="« Toutes les actualités conformité » couvre tous les types SAUF les actualités générales "
                                "(faits divers, politique, sécurité…), à ajouter séparément si besoin.")
@@ -75,15 +89,16 @@ def render_generateur(ctx: dict | None = None, region_defaut: str | None = None,
         nom_doc = t2.text_input("Titre personnalisé", "Bulletin de veille", key=f"{key}_titre_libre").strip() or "Bulletin de veille"
 
     # 3. Période / options
-    d1, d2, d3 = st.columns([1.6, 1.2, 1])
-    periode = d1.radio("Période", list(V.PERIODES), index=1, horizontal=True, key=f"{key}_per")
+    periode = st.radio("Période", list(V.PERIODES), index=1, horizontal=True, key=f"{key}_per")
+    d1, d2, d3 = st.columns([1.4, 1.2, 1])
+    tri = d1.selectbox("Trier par", V.TRIS, key=f"{key}_tri")
     prononcees = d2.toggle("🎯 Uniquement les mesures prononcées", value=False, key=f"{key}_pron",
                            help="Sanction, gel, amende, embargo, liste GAFI effectivement décidés "
                                 "(exclut opinions, projets, analyses).")
     nmax = d3.slider("Lignes max.", 5, 100, 30, key=f"{key}_nmax")
     synthese = st.text_area("Synthèse de l'analyste (facultatif, ajoutée en tête du PDF)", height=70, key=f"{key}_syn")
 
-    if not st.button("🔎 Lancer la veille et générer le tableau", type="primary", key=f"{key}_go"):
+    if not st.button("🔎 Générer la veille (image + PDF)", type="primary", key=f"{key}_go"):
         if st.session_state.get(f"{key}_res"):
             _afficher(st.session_state[f"{key}_res"], key)
         else:
@@ -102,14 +117,17 @@ def render_generateur(ctx: dict | None = None, region_defaut: str | None = None,
                 pass
         raw += V.archives()
         rows = V.selectionner(raw, None if monde_entier else set(codes), cats, V.PERIODES[periode], prononcees)
-        rows = C.prepare_news(rows, enriched=True)[:nmax]     # une information = une ligne (FR / EN fusionnés)
+        rows = C.prepare_news(rows, enriched=True)            # une information = une ligne (FR / EN fusionnés)
+        rows = V.trier(sorted(rows, key=lambda r: r.get("ts") or 0, reverse=True)[:nmax], tri)   # les plus récentes, puis tri
 
     now = datetime.now()
-    period_txt = f"Du {now - timedelta(days=V.PERIODES[periode]):%d/%m/%Y} au {now:%d/%m/%Y}"
+    jours = V.PERIODES[periode]
+    period_txt = (f"Dernières 24 h — du {now - timedelta(days=1):%d/%m/%Y %H:%M} au {now:%d/%m/%Y %H:%M}" if jours == 1
+                  else f"Du {now - timedelta(days=jours):%d/%m/%Y} au {now:%d/%m/%Y}")
     if monde_entier:
         perimetre = "Monde entier"
     elif tous:
-        perimetre = f"{V.court(region)} — tous les pays"
+        perimetre = f"{V.court(region)} (tous les pays)"
     else:
         perimetre = ", ".join(noms[c] for c in codes)
     types = " · ".join(V.court(c) for c in cats)
@@ -126,37 +144,69 @@ def render_generateur(ctx: dict | None = None, region_defaut: str | None = None,
     _afficher(st.session_state[f"{key}_res"], key)
 
 
+@st.cache_data(show_spinner=False, max_entries=8)
+def _apercu_pdf(pdf: bytes, max_pages: int = 6) -> list[bytes]:
+    """Pages du PDF en images, pour l'aperçu à l'écran (pypdfium2)."""
+    import io
+
+    import pypdfium2 as pdfium
+    doc = pdfium.PdfDocument(pdf)
+    out = []
+    for i in range(min(len(doc), max_pages)):
+        buf = io.BytesIO()
+        page = doc[i]
+        page.render(scale=1.6).to_pil().save(buf, "PNG")
+        page.close()
+        out.append(buf.getvalue())
+    doc.close()
+    return out
+
+
 def _afficher(res: dict, key: str) -> None:
+    """Affichage principal : la veille en IMAGE et en PDF (format Weekly Watch), prêts à télécharger."""
     rows = res["rows"]
-    st.markdown(
-        f'<div class="hero"><div class="hero-t">{res["title"]}</div>'
-        f'<div class="hero-s">{res["period_txt"].upper()} · {res["label"].upper()} · {len(rows)} INFORMATION(S)</div></div>',
-        unsafe_allow_html=True)
+    st.markdown(f"#### {res['title']}")
+    st.caption(f"{res['period_txt']} · {res['label']} · {len(rows)} information(s)")
     for line in res["intro"]:
         st.caption(line)
     if not rows:
         st.info("Aucune information ne correspond à ces critères sur la période. Élargissez la période, le type "
                 "d'information ou le périmètre (les petits pays sont peu couverts par la presse).")
-    st.markdown(C.table_html(rows), unsafe_allow_html=True)
-    st.caption(C.TABLE_NOTE + " Un nom cité dans la presse n'est pas une désignation officielle : vérifiez sur la liste source.")
 
     base = f"veille_{res['slug']}_{res['stamp']}"
-    e = st.columns([1, 1, 1, 3])
+    png = pdf = None
     try:
         png = make_png(rows, res["label"], res["period_txt"], title=res["title"])
-        e[0].download_button("🖼️ Image (PNG)", png, f"{base}.png", "image/png", width="stretch", key=f"{key}_png")
     except Exception as ex:
-        png = None
-        e[0].caption(f"PNG indisponible : {ex}")
+        st.caption(f"Image indisponible : {ex}")
     try:
-        e[1].download_button("📄 Rapport PDF", make_pdf(rows, res["label"], res["period_txt"], title=res["title"],
-                                                         intro=res["intro"]),
-                             f"{base}.pdf", "application/pdf", width="stretch", key=f"{key}_pdf")
+        pdf = make_pdf(rows, res["label"], res["period_txt"], title=res["title"], intro=res["intro"])
     except ImportError:
-        e[1].caption("PDF : ajoutez « reportlab » à requirements.txt")
+        st.caption("PDF : ajoutez « reportlab » à requirements.txt")
+
+    e = st.columns([1, 1, 1, 2])
+    if png:
+        e[0].download_button("🖼️ Télécharger l'image (PNG)", png, f"{base}.png", "image/png", width="stretch",
+                             type="primary", key=f"{key}_png")
+    if pdf:
+        e[1].download_button("📄 Télécharger le PDF", pdf, f"{base}.pdf", "application/pdf", width="stretch",
+                             type="primary", key=f"{key}_pdf")
     e[2].download_button("📥 Excel", to_excel_watch(rows), f"{base}.xlsx",
                          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch",
                          key=f"{key}_xlsx")
-    if png:
-        with st.expander("👁️ Aperçu de l'image"):
+
+    v_img, v_pdf, v_tab = st.tabs(["🖼️ Image", "📄 PDF", "📋 Tableau interactif (liens)"])
+    with v_img:
+        if png:
             st.image(png, width="stretch")
+    with v_pdf:
+        if pdf:
+            try:
+                pages = _apercu_pdf(pdf)
+                for i, p in enumerate(pages, 1):
+                    st.image(p, caption=f"Page {i}", width="stretch")
+            except Exception:
+                st.caption("Aperçu PDF indisponible : téléchargez le fichier.")
+    with v_tab:
+        st.markdown(C.table_html(rows), unsafe_allow_html=True)
+    st.caption(C.TABLE_NOTE + " Un nom cité dans la presse n'est pas une désignation officielle : vérifiez sur la liste source.")
