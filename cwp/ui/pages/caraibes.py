@@ -157,8 +157,8 @@ def _score(r) -> int:
 def render_caraibes() -> None:
     p = pays().copy()
     p["vigilance"] = p.apply(_score, axis=1)
-    t_reg, t_disp, t_seuil, t_ctx, t_veille = st.tabs(["🗺️ Vue régionale", "🏛️ Dispositif & institutions", "📏 Seuils & obligations",
-                                                      "🌪️ Contexte & rapport", "📡 Veille Caraïbes"])
+    t_reg, t_veille, t_disp, t_seuil, t_ctx = st.tabs(["🗺️ Vue régionale", "📡 Veille Caraïbes", "🏛️ Dispositif & institutions",
+                                                      "📏 Seuils & obligations", "🌪️ Contexte & rapport"])
     with t_reg:
         st.caption("29 juridictions : membres du GAFIC, République dominicaine et Cuba (GAFILAT), territoires français, néerlandais et "
                    "américains. Statuts des listes vérifiés au 04/11/2026.")
@@ -242,33 +242,93 @@ def render_caraibes() -> None:
                                    + fiche.to_html(index=False)).encode("utf-8"), f"fiche_lcbft_{r.code}.html", "text/html")
 
     with t_veille:
-        st.write("Articles récents sur la conformité, le blanchiment, la corruption et les sanctions dans **toute la Caraïbe**, dans la langue "
-                 "de chaque pays (espagnol, anglais, néerlandais, français). Chaque clic enrichit la veille « veille_caraibes_pays ».")
-        v = lire_veille()
-        c1, c2 = st.columns(2)
-        sel_p = c1.multiselect("Pays", p.pays.tolist(), placeholder="Tous les pays")
-        sel_t = c2.multiselect("Thèmes", list(THEMES) + ["Autre"], placeholder="Tous les thèmes")
-        if st.button("📡 Mettre à jour la veille Caraïbes (29 juridictions)", type="primary"):
-            codes = p[p.pays.isin(sel_p)].code.tolist() if sel_p else None
-            with st.spinner("Collecte en cours (≈ 30 s)…"):
-                n, err = mettre_a_jour_veille(codes)
-            st.success(f"{n} articles collectés.")
-            if err:
-                st.caption("Sources en échec : " + " · ".join(err))
-            st.cache_data.clear()
-            v = lire_veille()
-        if v.empty:
-            st.info("Aucun article : cliquez sur « Mettre à jour la veille Caraïbes ».")
-            return
-        if "pays" not in v:
-            v = v.assign(pays="—")
-        if sel_p:
-            v = v[v.pays.isin(sel_p)]
-        if sel_t and "theme" in v:
-            v = v[v.theme.isin(sel_t)]
-        st.plotly_chart(px.histogram(v, y="pays", color="theme" if "theme" in v else None, height=420,
-                                     title="Articles par pays et par thème").update_yaxes(categoryorder="total ascending", title=None),
-                        width="stretch")
-        cols_aff = [c for c in ("date", "pays", "theme", "titre", "media", "lien", "langue") if c in v]
-        st.dataframe(v.sort_values("date", ascending=False)[cols_aff].head(500), hide_index=True, width="stretch",
-                     column_config={"lien": st.column_config.LinkColumn("Lien", display_text="ouvrir")})
+        _veille_weekly(p)
+
+
+# --------------------------------------------------------------------------- #
+# Veille Caraïbes au format Weekly Watch (image / PDF / tableau)
+# --------------------------------------------------------------------------- #
+CC_EXPORT = {"FR-DOM": "GP", "PR-VI": "PR"}   # codes internes -> code ISO pour le drapeau
+
+
+def _articles(v: pd.DataFrame) -> list[dict]:
+    """Lignes stockées (veille_caraibes_pays) -> articles enrichis (entité, mesure, montant, autorité…)."""
+    from cwp.core.classify import enrich
+    out = []
+    for _, a in v.iterrows():
+        try:
+            ts = datetime.strptime(str(a.get("date", "")), "%Y-%m-%d").timestamp()
+        except Exception:
+            ts = 0
+        r = enrich(dict(title=str(a.get("titre", "")), desc="", link=str(a.get("lien", "")), ts=ts,
+                        source=str(a.get("media", "")), lang=str(a.get("langue", "")), theme=str(a.get("theme", ""))))
+        code = str(a.get("code", ""))
+        r["cc"] = CC_EXPORT.get(code, code if len(code) == 2 else "")
+        r["country"] = str(a.get("pays", "")) or r["country"]
+        out.append(r)
+    return out
+
+
+def _veille_weekly(p: pd.DataFrame) -> None:
+    from datetime import timedelta
+
+    from cwp.services import veille_ciblee as V
+    from cwp.ui import components as C
+    from cwp.ui.pages.generateur_veille import _afficher, _slug
+
+    st.caption("Veille conformité des 29 juridictions de la Caraïbe, dans la langue de chaque pays (espagnol, anglais, "
+               "néerlandais, français), présentée au format Weekly Watch et exportable en image et en PDF.")
+    c1, c2 = st.columns([2, 1])
+    sel_p = c1.multiselect("Pays", p.pays.tolist(), placeholder="Tous les pays de la Caraïbe", key="carv_pays")
+    if c2.button("📡 Mettre à jour la veille (29 juridictions)", type="primary", width="stretch", key="carv_maj"):
+        codes = p[p.pays.isin(sel_p)].code.tolist() if sel_p else None
+        with st.spinner("Collecte en cours (≈ 30 s)…"):
+            n, err = mettre_a_jour_veille(codes)
+        st.success(f"{n} article(s) collecté(s).")
+        if err:
+            st.caption("Sources en échec : " + " · ".join(err))
+        st.cache_data.clear()
+
+    cats = st.multiselect("Type d'information", V.CHOIX, default=[V.TOUTES], key="carv_cats",
+                          help="« Toutes les actualités conformité » exclut les actualités générales (faits divers, politique…).")
+    periode = st.radio("Période", list(V.PERIODES), index=1, horizontal=True, key="carv_per")
+    d1, d2, d3 = st.columns([1.3, 1.3, 1])
+    tri = d1.selectbox("Trier par", V.TRIS, key="carv_tri")
+    titre_doc = d2.selectbox("Titre du document", V.TITRES, key="carv_titre")
+    nmax = d3.slider("Lignes max.", 5, 100, 30, key="carv_nmax")
+
+    v = lire_veille()
+    if v.empty:
+        st.info("Aucun article : cliquez sur « Mettre à jour la veille ».")
+        return
+    if "pays" not in v:
+        v = v.assign(pays="—")
+    if sel_p:
+        v = v[v.pays.isin(sel_p)]
+
+    jours = V.PERIODES[periode]
+    since = datetime.now().timestamp() - jours * 86400
+    toutes = V.TOUTES in cats or not cats
+    wanted = set(V.CATEGORIES) if toutes else {c for c in cats if c in V.CATEGORIES}
+    if V.GENERALE in cats:
+        wanted.add(V.GENERALE)
+    rows = []
+    for r in _articles(v):
+        if r["ts"] and r["ts"] < since:
+            continue
+        lab = V.type_information(r)
+        if lab not in wanted:
+            continue
+        V.appliquer_type(r, lab)
+        r["entity"] = V.entite_cible(r)
+        rows.append(r)
+    rows = C.prepare_news(rows, enriched=True)
+    rows = V.trier(sorted(rows, key=lambda r: r.get("ts") or 0, reverse=True)[:nmax], tri)
+
+    now = datetime.now()
+    period_txt = (f"Dernières 24 h — du {now - timedelta(days=1):%d/%m/%Y %H:%M} au {now:%d/%m/%Y %H:%M}" if jours == 1
+                  else f"Du {now - timedelta(days=jours):%d/%m/%Y} au {now:%d/%m/%Y}")
+    zone = ", ".join(sel_p) if sel_p and len(", ".join(sel_p)) <= 40 else ("Caraïbes" if not sel_p else "Caraïbes (sélection)")
+    res = dict(rows=rows, title=f"{titre_doc} — {zone}", label=" · ".join(V.court(c) for c in cats), period_txt=period_txt,
+               intro=[], stamp=f"{now:%Y%m%d}", slug=_slug(zone))
+    _afficher(res, key="carv")
