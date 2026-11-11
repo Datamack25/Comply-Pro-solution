@@ -61,7 +61,24 @@ CATEGORIES = {
 }
 CHOIX = [TOUTES] + list(CATEGORIES)
 _LABEL = {m: lab for lab, (_, _, ms) in CATEGORIES.items() for m in ms}   # mesure -> type d'information
-PERIODES = {"7 jours": 7, "30 jours": 30, "90 jours": 90, "6 mois": 183, "12 mois": 366}
+PERIODES = {"24 h": 1, "7 jours": 7, "15 jours": 15, "30 jours": 30, "90 jours": 90, "6 mois": 183, "12 mois": 366}
+TRIS = ["📅 Date — plus récent d'abord", "📅 Date — plus ancien d'abord", "🗂️ Type d'information", "🌍 Pays",
+        "⚖️ Mesure (sanctions et embargos d'abord)"]
+_ORDRE_MESURE = {"gel": 0, "sanction": 1, "embargo": 2, "amende": 3, "liste": 4, "enquete": 5, "regle": 6, "news": 7}
+
+
+def trier(rows: list[dict], tri: str) -> list[dict]:
+    """Tri du tableau ; à critère égal, l'information la plus récente passe en premier."""
+    rec = sorted(rows, key=lambda r: r.get("ts") or 0, reverse=True)
+    if tri == TRIS[1]:
+        return sorted(rows, key=lambda r: r.get("ts") or 0)
+    if tri == TRIS[2]:
+        return sorted(rec, key=lambda r: r.get("theme", ""))
+    if tri == TRIS[3]:
+        return sorted(rec, key=lambda r: r.get("country") or "~")
+    if tri == TRIS[4]:
+        return sorted(rec, key=lambda r: _ORDRE_MESURE.get(r.get("mkey"), 9))
+    return rec
 CHUNK = 6          # pays regroupés par requête quand on couvre « tous les pays » d'une région
 
 
