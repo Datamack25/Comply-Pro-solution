@@ -8,6 +8,12 @@
   du **type d'information** (sanctions & gels, embargos, amendes, listes GAFI, réglementation & circulaires,
   enquêtes & corruption, ou toutes les actualités) et de la **période**.
 - Tableau au format Weekly Watch et exports PNG, PDF (synthèse de l'analyste, statut GAFI des pays) et Excel.
+- Titre professionnel au choix (« Bulletin Conformité & Sanctions — Haïti », « Compliance Brief — Caraïbes »…).
+- Nouvelle catégorie « Actualité générale (hors conformité) » : les faits divers et l'actualité politique ou
+  sécuritaire sans lien avec sanctions, embargos, LCB-FT, corruption ou réglementation ne sont plus classés
+  « Sanctions » ; ils sont exclus par défaut.
+- Entité / cible : les mots de tête de titre (« Launches », « Cinq », « Following »…) ne sont plus pris pour
+  une entité ; les sigles (UNODC, GAFI…) et l'autorité sont retenus à la place.
 - Les mesures prononcées à l'étranger qui visent un pays du périmètre (ex. OFAC → Haïti) sont retenues.
 - `make_png` / `make_pdf` acceptent un titre personnalisé (et une introduction pour le PDF) ; le Weekly Watch
   du Dashboard n'est pas modifié.
