@@ -31,6 +31,7 @@ from cwp.services.news import gnews, parse_feed
 MONDE = "🌍 Monde entier"
 TOUS = "🌐 Tous les pays de la région"
 REGIONS = {
+    "🌎 Amérique latine & Caraïbes": lambda r: r.sous_region.isin(["Caraïbes", "Amérique centrale", "Amérique du Sud"]),
     "🏝️ Caraïbes": lambda r: r.sous_region == "Caraïbes",
     "🌎 Amérique latine": lambda r: r.sous_region.isin(["Amérique centrale", "Amérique du Sud"]),
     "🇺🇸 Amérique du Nord": lambda r: r.sous_region == "Amérique du Nord",
@@ -60,6 +61,53 @@ CATEGORIES = {
                                             "investigation OR charged OR convicted OR corruption OR \"money laundering\"", {"enquete"}),
 }
 CHOIX = [TOUTES] + list(CATEGORIES)
+
+# --------------------------------------------------------------------------- #
+# Amérique latine & Caraïbes : presse hispanophone / lusophone et régulateurs régionaux
+# --------------------------------------------------------------------------- #
+NOMS_ES = {"HT": "Haití", "DO": "\"República Dominicana\"", "CU": "Cuba", "PR": "\"Puerto Rico\"", "MX": "México",
+           "GT": "Guatemala", "HN": "Honduras", "SV": "\"El Salvador\"", "NI": "Nicaragua", "CR": "\"Costa Rica\"",
+           "PA": "Panamá", "BZ": "Belice", "CO": "Colombia", "VE": "Venezuela", "EC": "Ecuador", "PE": "Perú",
+           "BO": "Bolivia", "CL": "Chile", "AR": "Argentina", "UY": "Uruguay", "PY": "Paraguay"}
+NOMS_PT = {"BR": "Brasil"}
+CAT_ES = {
+    "🎯 Sanctions & gels d'avoirs": "sanciones OR OFAC OR \"congelamiento de activos\" OR \"bloqueo de bienes\"",
+    "🚫 Embargos & contrôle des exportations": "embargo OR \"tráfico de armas\" OR \"control de exportaciones\"",
+    "💶 Amendes & sanctions des régulateurs": "multa \"lavado de activos\" OR multa Superintendencia OR \"sanción administrativa\"",
+    "⚠️ Listes GAFI & pays à risque": "GAFI OR GAFILAT OR \"lista gris\" OR \"evaluación mutua\"",
+    "📜 Réglementation & circulaires": "(\"lavado de activos\" OR LA/FT OR \"financiamiento del terrorismo\" OR cumplimiento) "
+                                      "(resolución OR circular OR normativa OR reglamento OR ley OR UIF OR Superintendencia)",
+    "🔎 Enquêtes, poursuites & corruption": "corrupción OR \"lavado de activos\" OR fraude OR narcotráfico OR imputado",
+}
+CAT_PT = {
+    "🎯 Sanctions & gels d'avoirs": "sanções OR OFAC OR \"bloqueio de bens\"",
+    "🚫 Embargos & contrôle des exportations": "embargo OR \"tráfico de armas\"",
+    "💶 Amendes & sanctions des régulateurs": "multa \"lavagem de dinheiro\" OR \"Banco Central\" multa",
+    "⚠️ Listes GAFI & pays à risque": "GAFI OR GAFILAT OR \"lista cinza\"",
+    "📜 Réglementation & circulaires": "(\"lavagem de dinheiro\" OR PLD/FT OR compliance) (resolução OR circular OR norma OR COAF OR \"Banco Central\")",
+    "🔎 Enquêtes, poursuites & corruption": "corrupção OR \"lavagem de dinheiro\" OR fraude OR \"Polícia Federal\"",
+}
+# Requêtes régionales (indépendantes des pays) : régulateurs et organismes régionaux
+REGIONAL_LATAM = {
+    "📜 Réglementation & circulaires": [
+        ("GAFILAT (normativa OR recomendaciones OR evaluación OR guía)", "es"),
+        ("(UIF OR UAF OR \"Unidad de Análisis Financiero\" OR Superintendencia) (resolución OR circular OR normativa) \"lavado de activos\"", "es"),
+        ("(CFATF OR \"Caribbean Financial Action Task Force\" OR \"Eastern Caribbean Central Bank\") (guidelines OR regulation OR AML)", "en"),
+        ("(GAFIC OR BRH OR UCREF OR \"banque centrale\") (circulaire OR règlement OR loi) blanchiment Caraïbes OR Haïti", "fr"),
+        ("COAF OR \"Banco Central\" (resolução OR circular) \"lavagem de dinheiro\"", "pt"),
+    ],
+    "⚠️ Listes GAFI & pays à risque": [("GAFILAT OR CFATF \"mutual evaluation\" OR \"evaluación mutua\"", "es")],
+}
+LATAM = set(NOMS_ES) | set(NOMS_PT) | {"JM", "TT", "BB", "BS", "GY", "SR", "AG", "LC", "VC", "GD", "KN", "DM", "KY", "VG",
+                                        "AI", "AW", "CW", "SX", "TC", "MS", "BQ", "GP", "MQ", "BL", "MF", "VI", "GF"}
+
+
+def _url(q: str, lang: str) -> str:
+    """URL Google Actualités pour fr / en / es (Amérique latine) / pt (Brésil)."""
+    from urllib.parse import quote_plus
+    ed = {"fr": ("fr", "FR", "FR:fr"), "en": ("en", "US", "US:en"), "es": ("es-419", "MX", "MX:es-419"),
+          "pt": ("pt-BR", "BR", "BR:pt-419")}[lang]
+    return f"https://news.google.com/rss/search?q={quote_plus(q)}&hl={ed[0]}&gl={ed[1]}&ceid={ed[2]}"
 _LABEL = {m: lab for lab, (_, _, ms) in CATEGORIES.items() for m in ms}   # mesure -> type d'information
 PERIODES = {"24 h": 1, "7 jours": 7, "15 jours": 15, "30 jours": 30, "90 jours": 90, "6 mois": 183, "12 mois": 366}
 TRIS = ["📅 Date — plus récent d'abord", "📅 Date — plus ancien d'abord", "🗂️ Type d'information", "🌍 Pays",
@@ -119,7 +167,8 @@ def _cite(r: dict, codes: set[str]) -> set[str]:
         n = geo.norm(text)
         for c in codes - found:
             fr, en = _noms(c)
-            if geo.norm(fr) in n or geo.norm(en) in n:
+            autres = [x.strip('"') for x in (NOMS_ES.get(c, ""), NOMS_PT.get(c, "")) if x]
+            if any(geo.norm(x) in n for x in [fr, en] + autres):
                 found.add(c)
     if r.get("cc") in codes:
         found.add(r["cc"])
@@ -131,7 +180,8 @@ def _cite(r: dict, codes: set[str]) -> set[str]:
 # --------------------------------------------------------------------------- #
 @st.cache_data(ttl=3600, show_spinner=False)
 def collecter(codes: tuple[str, ...], cats: tuple[str, ...]) -> list[dict]:
-    """Articles Google News pour les pays (vide = monde entier) × types d'information, FR + EN."""
+    """Articles Google News pour les pays (vide = monde entier) × types d'information : FR + EN partout,
+    ES pour les pays hispanophones, PT pour le Brésil, plus les régulateurs régionaux (GAFILAT, GAFIC, UIF…)."""
     jobs = []
     for cat in cats:
         q_fr, q_en, _ = CATEGORIES[cat]
@@ -143,11 +193,19 @@ def collecter(codes: tuple[str, ...], cats: tuple[str, ...]) -> list[dict]:
             fr = " OR ".join(_q(_noms(c)[0]) for c in grp)
             en = " OR ".join(_q(_noms(c)[1]) for c in grp)
             jobs += [(f"({fr}) ({q_fr})", "fr", cat), (f"({en}) ({q_en})", "en", cat)]
+        es = [c for c in codes if c in NOMS_ES]               # presse hispanophone
+        for i in range(0, len(es), CHUNK):
+            jobs.append((f"({' OR '.join(NOMS_ES[c] for c in es[i:i + CHUNK])}) ({CAT_ES[cat]})", "es", cat))
+        if "BR" in codes:                                     # presse brésilienne
+            jobs.append((f"Brasil ({CAT_PT[cat]})", "pt", cat))
+        if set(codes) & LATAM:                                # régulateurs et organismes régionaux
+            jobs += [(q, lang, cat, True) for q, lang in REGIONAL_LATAM.get(cat, [])]
     seen: set = set()
 
     def run(job):
-        q, lang, cat = job
-        return parse_feed(gnews(q, lang), cat, lang, 25, set())
+        q, lang, cat, *reg = job
+        extra = {"regional": "Amérique latine & Caraïbes"} if reg else {}
+        return parse_feed(_url(q, lang), cat, lang, 25, set(), **extra)
 
     out = []
     with ThreadPoolExecutor(max_workers=8) as ex:
@@ -187,19 +245,31 @@ GENERALE = "🗞️ Actualité générale (hors conformité)"
 CHOIX = CHOIX + [GENERALE]
 _KW = [   # (type d'information, motifs sur le texte normalisé sans accents) — l'ordre fixe la priorité
     ("🎯 Sanctions & gels d'avoirs", r"sanction|ofac|ofsi|gel des avoirs|gel d avoirs|asset freeze|assets frozen|designat|"
-                                     r"designe|\bsdn\b|liste de gel|comite des sanctions|sanctions committee"),
+                                     r"designe|\bsdn\b|liste de gel|comite des sanctions|sanctions committee|sancion|sancoes|sancao|"
+                                     r"congelamiento|bloqueo de (bienes|activos)|bloqueio de bens"),
     ("🚫 Embargos & contrôle des exportations", r"embargo|export control|controle des exportations|double usage|dual.use|"
-                                               r"trafic d armes|arms trafficking|firearms trafficking|trafic illicite d armes"),
-    ("💶 Amendes & sanctions des régulateurs", r"\bamendes?\b|\bfined\b|\bpenalt|settlement|commission des sanctions|\bblame\b"),
+                                               r"trafic d armes|arms trafficking|firearms trafficking|trafic illicite d armes|trafico de armas|"
+                                               r"control de exportaciones"),
+    ("💶 Amendes & sanctions des régulateurs", r"\bamendes?\b|\bfined\b|\bpenalt|settlement|commission des sanctions|\bblame\b|\bmultas?\b|"
+                                              r"sancion administrativa"),
+    ("📜 Réglementation & circulaires", r"circulaire|circular|resolucion|resolucao|normativa|reglamento|reglement\b|"
+                                       r"directive|lignes directrices|guidance|guidelines|\bguia\b|recomendaciones|"
+                                       r"recommandations|\bdecret|decreto|\bley\b|\bloi\b|nueva norma|\bnorma\b|instruction"),
     ("⚠️ Listes GAFI & pays à risque", r"\bgafi\b|\bfatf\b|\bgafic\b|\bcfatf\b|liste grise|grey list|gray list|liste noire|"
-                                       r"evaluation mutuelle|mutual evaluation|pays a haut risque|high.risk jurisdiction"),
+                                       r"evaluation mutuelle|mutual evaluation|pays a haut risque|high.risk jurisdiction|gafilat|lista gris|"
+                                       r"lista cinza|evaluacion mutua"),
     ("🔎 Enquêtes, poursuites & corruption", r"corruption|blanchiment|money laundering|fraude|\bfraud|detournement|embezzl|"
                                             r"pots.de.vin|bribery|\bbribe|financement du terrorisme|terrorist financing|"
                                             r"narcotrafic|drug trafficking|trafic de drogue|\bulcc\b|\bucref\b|extradit|"
-                                            r"fonds publics|public funds|kleptocra|evasion fiscale|tax evasion"),
+                                            r"fonds publics|public funds|kleptocra|evasion fiscale|tax evasion|corrupcion|corrupcao|"
+                                            r"lavado de (activos|dinero)|lavagem de dinheiro|soborno|propina|narcotrafico|"
+                                            r"financiamiento del terrorismo|imputad"),
     ("📜 Réglementation & circulaires", r"circulaire|circular|regulat|reglement|directive|lignes directrices|guidance|"
                                        r"\blcb|\baml\b|\bkyc\b|conformite|compliance|banque centrale|central bank|\bbrh\b|"
-                                       r"superintendencia|supervision bancaire|banking supervision|crypto|\bloi\b.*(financ|banc)"),
+                                       r"superintendencia|supervision bancaire|banking supervision|crypto|\bloi\b.*(financ|banc)|"
+                                       r"resolucion|resolucao|normativa|reglamento|\buif\b|\buaf\b|\bcoaf\b|"
+                                       r"\bcnbv\b|\bsbs\b|banco central|\bla ft\b|\blaft\b|\bpld\b|cumplimiento|"
+                                       r"\bcfatf\b|\bgafic\b|eccb|eastern caribbean central bank"),
 ]
 _KW = [(lab, __import__("re").compile(rx)) for lab, rx in _KW]
 _MKEY_LABEL = {"gel": "🎯 Sanctions & gels d'avoirs", "sanction": "🎯 Sanctions & gels d'avoirs",
@@ -242,6 +312,10 @@ def entite_cible(r: dict) -> str:
     fallback = (r["auth"].split(",")[0].strip() if r.get("auth") else "") or r.get("country") or "—"
     if not ent or ent == "—":
         return fallback
+    org = _re.search(r"(Banco Central(?: d[eo]l?| do| da)? [A-ZÁÉÍÓÚ][\wáéíóúãõç]+|Banque centrale(?: d[eu']| des)? ?[A-ZÉ][\w-]+|"
+                     r"Superintendencia de [A-ZÁÉÍÓÚ][\wáéíóú]+(?: [a-z]+ [A-ZÁÉÍÓÚ][\wáéíóú]+)?)", h)
+    if org:
+        return org.group(1)
     sigle = _re.search(r"\b[A-Z][A-Z0-9]{1,9}\b", ent)
     if sigle and sigle.group(0) not in ("US", "UE", "EU", "UK", "UN"):
         return sigle.group(0)                        # « UNODC Strengthens Regional… » -> UNODC
@@ -256,6 +330,22 @@ def entite_cible(r: dict) -> str:
     if len(mots) == 1 and h.strip().startswith(ent) and not ent.isupper() and ent.lower() in h.lower()[len(ent):]:
         return fallback
     return ent
+
+
+def appliquer_type(r: dict, lab: str) -> dict:
+    """Catégorie, mesure et couleur cohérentes avec le type d'information retenu."""
+    r["theme"] = court(lab)                           # colonne « Catégorie » = type d'information
+    if lab == GENERALE:
+        r["mkey"], r["measure"] = "news", "Hors conformité"
+    elif r["mkey"] in ("news", "enquete", "regle"):
+        mk = {"🔎 Enquêtes, poursuites & corruption": ("enquete", "Enquête / poursuite"),
+              "📜 Réglementation & circulaires": ("regle", "Réglementation"),
+              "💶 Amendes & sanctions des régulateurs": ("amende", "Amende"),
+              "🎯 Sanctions & gels d'avoirs": ("sanction", "Sanction"),
+              "🚫 Embargos & contrôle des exportations": ("embargo", "Embargo / export")}.get(lab)
+        if mk:
+            r["mkey"], r["measure"] = mk
+    return r
 
 
 def selectionner(raw: list[dict], codes: set[str] | None, cats: list[str], jours: int,
@@ -277,8 +367,11 @@ def selectionner(raw: list[dict], codes: set[str] | None, cats: list[str], jours
             continue
         if codes is not None:
             cited = _cite(r, codes)
-            if not cited:
+            if not cited and not it.get("regional"):
                 continue
+            if not cited:                                 # publication régionale (GAFILAT, GAFIC…) : sans pays précis
+                r["cc"], r["country"] = "", it["regional"]
+                cited = {""}
             # pays VISÉ : si la détection automatique a retenu l'émetteur (États-Unis, UE…), on retient le pays cité
             if r["cc"] not in cited:
                 cc = sorted(cited)[0]
@@ -290,13 +383,7 @@ def selectionner(raw: list[dict], codes: set[str] | None, cats: list[str], jours
             continue
         if mesures_prononcees and not is_action(r):
             continue
-        r["theme"] = court(lab)                       # colonne « Catégorie » = type d'information
-        if lab == GENERALE:
-            r["mkey"], r["measure"] = "news", "Hors conformité"
-        elif r["mkey"] in ("news", "enquete", "regle") and lab != GENERALE:
-            r["measure"] = {"🔎 Enquêtes, poursuites & corruption": "Enquête / poursuite",
-                            "📜 Réglementation & circulaires": "Réglementation"}.get(lab, r["measure"])
-            r["mkey"] = {"Enquête / poursuite": "enquete", "Réglementation": "regle"}.get(r["measure"], r["mkey"])
+        appliquer_type(r, lab)
         r["entity"] = entite_cible(r)
         seen.add(it["link"])
         rows.append(r)
@@ -306,6 +393,17 @@ def selectionner(raw: list[dict], codes: set[str] | None, cats: list[str], jours
 # --------------------------------------------------------------------------- #
 # Titres professionnels du document
 # --------------------------------------------------------------------------- #
+RACCOURCIS = {   # libellé -> (région, types d'information, titre)
+    "📜 Réglementation — Amérique latine & Caraïbes": ("🌎 Amérique latine & Caraïbes", ["📜 Réglementation & circulaires"],
+                                                      "Note de veille réglementaire"),
+    "🎯 Sanctions & embargos — Amérique latine & Caraïbes": ("🌎 Amérique latine & Caraïbes",
+                                                            ["🎯 Sanctions & gels d'avoirs", "🚫 Embargos & contrôle des exportations"],
+                                                            "Radar Sanctions & Embargos"),
+    "📰 Toute la conformité — Caraïbes": ("🏝️ Caraïbes", ["📰 Toutes les actualités conformité"], "Bulletin Conformité & Sanctions"),
+    "⚠️ GAFI & pays à risque — Amérique latine & Caraïbes": ("🌎 Amérique latine & Caraïbes", ["⚠️ Listes GAFI & pays à risque"],
+                                                            "Flash Conformité"),
+}
+
 TITRES = ["Bulletin Conformité & Sanctions", "Compliance Brief", "Radar Sanctions & Embargos",
           "Flash Conformité", "Veille LCB-FT & Sanctions", "Actualités Conformité", "Note de veille réglementaire"]
 TITRE_LIBRE = "✏️ Titre personnalisé"
