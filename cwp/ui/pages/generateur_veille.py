@@ -62,9 +62,17 @@ def render_generateur(ctx: dict | None = None, region_defaut: str | None = None,
     # 2. Type d'information
     cats = st.multiselect("Type d'information", V.CHOIX,
                           default=["🎯 Sanctions & gels d'avoirs", "🚫 Embargos & contrôle des exportations"],
-                          key=f"{key}_cats", help="« Toutes les actualités conformité » couvre l'ensemble des types.")
+                          key=f"{key}_cats",
+                          help="« Toutes les actualités conformité » couvre tous les types SAUF les actualités générales "
+                               "(faits divers, politique, sécurité…), à ajouter séparément si besoin.")
     if not cats:
         cats = [V.TOUTES]
+
+    # Titre du document
+    t1, t2 = st.columns([1, 1])
+    nom_doc = t1.selectbox("Titre du document", V.TITRES + [V.TITRE_LIBRE], key=f"{key}_titre")
+    if nom_doc == V.TITRE_LIBRE:
+        nom_doc = t2.text_input("Titre personnalisé", "Bulletin de veille", key=f"{key}_titre_libre").strip() or "Bulletin de veille"
 
     # 3. Période / options
     d1, d2, d3 = st.columns([1.6, 1.2, 1])
@@ -82,7 +90,7 @@ def render_generateur(ctx: dict | None = None, region_defaut: str | None = None,
             st.info("Réglez les filtres puis cliquez sur « Lancer la veille ». La collecte prend quelques secondes.")
         return
 
-    cats_fetch = tuple(V.CATEGORIES) if V.TOUTES in cats else tuple(c for c in cats if c in V.CATEGORIES)
+    cats_fetch = tuple(V.CATEGORIES) if (V.TOUTES in cats or cats == [V.GENERALE]) else tuple(c for c in cats if c in V.CATEGORIES)
     monde_entier = region == V.MONDE and tous
     with st.spinner("Collecte de la veille (presse FR / EN, flux de la plateforme, historique)…"):
         raw = V.collecter(() if monde_entier else tuple(codes), cats_fetch)
@@ -104,9 +112,10 @@ def render_generateur(ctx: dict | None = None, region_defaut: str | None = None,
         perimetre = f"{V.court(region)} — tous les pays"
     else:
         perimetre = ", ".join(noms[c] for c in codes)
-    types = "Toutes les actualités" if V.TOUTES in cats else " · ".join(V.court(c) for c in cats)
-    title = f"Veille {perimetre}" if len(perimetre) <= 40 else f"Veille {V.court(region)}"
-    label = f"{types} — {perimetre}" if title != f"Veille {perimetre}" else types
+    types = " · ".join(V.court(c) for c in cats)
+    zone = perimetre if len(perimetre) <= 40 else V.court(region)
+    title = f"{nom_doc} — {zone}"
+    label = types if zone == perimetre else f"{types} — {perimetre}"
     intro = [f"Synthèse : {synthese.strip()}"] if synthese.strip() else []
     if not tous and codes:
         st_df = V.statut_pays(codes)
