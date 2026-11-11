@@ -31,7 +31,7 @@ from cwp.config import COPYRIGHT as AUTHOR, ref_path  # noqa: E402
 
 DATA_FILE = ref_path("focus_caraibes_pays.csv")
 NEW_HOURS = 48
-PERIODS = {"7 jours": 7, "30 jours": 30, "90 jours": 90}
+PERIODS = {"24 h": 1, "7 jours": 7, "15 jours": 15, "30 jours": 30, "90 jours": 90}
 
 # Nom affiché -> mots utilisés dans la requête Google News (FR / EN)
 SEARCH_NAMES = {
@@ -162,7 +162,7 @@ def _regional_rows(raw, names):
 def _tab_weekly(df, h=None):
     codes_all = df["code"].tolist()
     names = dict(zip(df["code"], df["pays"]))
-    c1, c2, c3 = st.columns([1.3, 2.2, 1])
+    c1, c2, c3 = st.columns([2, 2, 1])
     period = c1.radio("Période", list(PERIODS), index=1, horizontal=True, key="fc_period")
     sel = c2.multiselect("Pays", codes_all, default=codes_all[:4], format_func=lambda c: names[c], key="fc_pays")
     nmax = c3.slider("Lignes", 5, 50, 20, key="fc_nmax")
@@ -308,7 +308,7 @@ def render_focus_caraibes(ctx: dict | None = None):
     st.markdown("# 🌎 Focus Caraïbes & Amérique latine")
     st.caption("Sanctions, embargos, corruption et risque LCB-FT dans la région, Haïti en tête.")
     df = load_countries()
-    t1, t2, t6, t3, t4, t5 = st.tabs(["🎯 Weekly Watch régional", "📡 Veille par pays", "🖨️ Générer un document",
+    t1, t6, t2, t3, t4, t5 = st.tabs(["🎯 Weekly Watch régional", "🏝️ Veille Caraïbes & Amérique latine (image / PDF)", "📡 Veille par pays",
                                       "🗺️ Fiches pays", "🕵️ Typologies", "✍️ Post LinkedIn"])
     with t1:
         _tab_weekly(df)
@@ -316,7 +316,7 @@ def render_focus_caraibes(ctx: dict | None = None):
         _tab_veille(df)
     with t6:
         from cwp.ui.pages.generateur_veille import render_generateur
-        render_generateur(ctx, region_defaut="🏝️ Caraïbes", pays_defaut=["HT"], key="fcg")
+        render_generateur(ctx, region_defaut="🏝️ Caraïbes", pays_defaut=None, key="fcg")   # tous les pays de la Caraïbe
     with t3:
         _tab_fiches(df)
     with t4:
